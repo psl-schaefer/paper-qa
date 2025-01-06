@@ -531,14 +531,14 @@ class Docs(BaseModel):
         self.texts_index.mmr_lambda = settings.texts_index_mmr_lambda
 
         await self._build_texts_index(embedding_model)
-        _k = k + len(self.deleted_dockeys)
+        k_ = k + len(self.deleted_dockeys)
         matches: list[Text] = cast(
             list[Text],
             (
                 await self.texts_index.max_marginal_relevance_search(
                     query,
-                    k=_k,
-                    fetch_k=2 * _k,
+                    k=k_,
+                    fetch_k=2 * k_,
                     embedding_model=embedding_model,
                     partitioning_fn=partitioning_fn,
                 )
@@ -602,15 +602,15 @@ class Docs(BaseModel):
         exclude_text_filter = exclude_text_filter or set()
         exclude_text_filter |= {c.text.name for c in session.contexts}
 
-        _k = answer_config.evidence_k
+        k = answer_config.evidence_k
         if exclude_text_filter:
             # Increase k to retrieve so we have enough to down-select after retrieval
-            _k += len(exclude_text_filter)
+            k += len(exclude_text_filter)
 
         if answer_config.evidence_retrieval:
             matches = await self.retrieve_texts(
                 session.question,
-                _k,
+                k,
                 evidence_settings,
                 embedding_model,
                 partitioning_fn=partitioning_fn,

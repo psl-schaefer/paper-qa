@@ -230,20 +230,21 @@ class ZoteroDB(zotero.Zotero):
             self.logger.info(f"Downloading new batch of up to {cur_limit} papers.")
 
             if collection_id:
-                _items = self._sliced_collection_items(
+                items_ = self._sliced_collection_items(
                     collection_id, limit=cur_limit, start=i
                 )
             else:
-                _items = self.top(**query_kwargs, limit=cur_limit, start=i)
+                items_ = self.top(**query_kwargs, limit=cur_limit, start=i)
 
-            if len(_items) == 0:
+            if len(items_) == 0:
                 break
             i += cur_limit
             self.logger.info("Downloading PDFs.")
-            _pdfs = [self.get_pdf(item) for item in _items]
 
             # Filter:
-            for item, pdf in zip(_items, _pdfs, strict=True):
+            for item, pdf in zip(
+                items_, [self.get_pdf(item) for item in items_], strict=True
+            ):
                 no_pdf = item is None or pdf is None
                 is_duplicate = pdf in pdfs
 

@@ -19,6 +19,7 @@ from llmclient import (
     HybridEmbeddingModel,
     LiteLLMEmbeddingModel,
     LLMModel,
+    LLMResult,
     SparseEmbeddingModel,
 )
 from pytest_subtests import SubTests
@@ -584,14 +585,12 @@ def test_query(docs_fixture) -> None:
 
 
 def test_llmresult_callback(docs_fixture) -> None:
-    my_results = []
-
-    async def my_callback(result) -> None:
-        my_results.append(result)
+    my_results: list[LLMResult] = []
 
     settings = Settings.from_name("fast")
     summary_llm = settings.get_summary_llm()
-    summary_llm.llm_result_callback = my_callback
+    summary_llm.llm_result_callback = my_results.append
+
     docs_fixture.get_evidence(
         "What is XAI?", settings=settings, summary_llm_model=summary_llm
     )

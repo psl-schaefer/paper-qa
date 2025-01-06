@@ -9,7 +9,7 @@ import pathlib
 import pickle
 import warnings
 import zlib
-from collections.abc import Awaitable, Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Sequence
 from enum import StrEnum, auto
 from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import UUID
@@ -456,7 +456,7 @@ async def process_file(
     manifest: dict[str, Any],
     semaphore: anyio.Semaphore,
     settings: Settings,
-    progress_bar_update: Callable[[], Awaitable] | None = None,
+    progress_bar_update: Callable[[], Any] | None = None,
 ) -> None:
     abs_file_path = (
         pathlib.Path(settings.agent.index.paper_directory).absolute() / rel_file_path
@@ -500,7 +500,7 @@ async def process_file(
                 # separate process_file invocation leads to a segfault or crash
                 await search_index.save_index()
                 if progress_bar_update:
-                    await progress_bar_update()
+                    progress_bar_update()
                 return
 
             this_doc = next(iter(tmp_docs.docs.values()))
@@ -527,7 +527,7 @@ async def process_file(
 
         # Update progress bar for either a new or previously indexed file
         if progress_bar_update:
-            await progress_bar_update()
+            progress_bar_update()
 
 
 WARN_IF_INDEXING_MORE_THAN = 999
@@ -535,7 +535,7 @@ WARN_IF_INDEXING_MORE_THAN = 999
 
 def _make_progress_bar_update(
     sync_index_w_directory: bool, total: int
-) -> tuple[contextlib.AbstractContextManager, Callable[[], Awaitable] | None]:
+) -> tuple[contextlib.AbstractContextManager, Callable[[], Any] | None]:
     # Disable should override enable
     env_var_disable = (
         os.environ.get("PQA_INDEX_DISABLE_PROGRESS_BAR", "").lower() in ENV_VAR_MATCH
@@ -562,7 +562,7 @@ def _make_progress_bar_update(
         )
         task_id = progress.add_task("Indexing...", total=total)
 
-        async def progress_bar_update() -> None:
+        def progress_bar_update() -> None:
             progress.update(task_id, advance=1)
 
         return progress, progress_bar_update
@@ -589,12 +589,12 @@ async def get_directory_index(  # noqa: PLR0912
         build: Opt-out flag (default is True) to read the contents of the source paper
             directory and if sync_index_w_directory is enabled also update the index.
     """
-    _settings = get_settings(settings)
-    index_settings = _settings.agent.index
+    settings_ = get_settings(settings)
+    index_settings = settings_.agent.index
     if index_name:
         warnings.warn(
             "The index_name argument has been moved to"
-            f" {type(_settings.agent.index).__name__},"
+            f" {type(settings_.agent.index).__name__},"
             " this deprecation will conclude in version 6.",
             category=DeprecationWarning,
             stacklevel=2,
@@ -604,7 +604,7 @@ async def get_directory_index(  # noqa: PLR0912
 
     search_index = SearchIndex(
         fields=[*SearchIndex.REQUIRED_FIELDS, "title", "year"],
-        index_name=index_settings.name or _settings.get_index_name(),
+        index_name=index_settings.name or settings_.get_index_name(),
         index_directory=index_settings.index_directory,
     )
     # NOTE: if the index was not previously built, its index_files will be empty.
@@ -619,7 +619,7 @@ async def get_directory_index(  # noqa: PLR0912
     if not sync_index_w_directory:
         warnings.warn(
             "The sync_index_w_directory argument has been moved to"
-            f" {type(_settings.agent.index).__name__},"
+            f" {type(settings_.agent.index).__name__},"
             " this deprecation will conclude in version 6.",
             category=DeprecationWarning,
             stacklevel=2,
@@ -677,7 +677,7 @@ async def get_directory_index(  # noqa: PLR0912
                         search_index,
                         manifest,
                         semaphore,
-                        _settings,
+                        settings_,
                         progress_bar_update_fn,
                     )
                 else:

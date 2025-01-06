@@ -226,9 +226,9 @@ class NumpyVectorStore(VectorStore):
         # plus we need to reset self._texts_filter each iteration
         for partition in np.unique(text_partitions):
             self._texts_filter = text_partitions == partition
-            _texts, _scores = await self.similarity_search(query, k, embedding_model)
-            texts.append(_texts)
-            scores.append(_scores)
+            texts_, scores_ = await self.similarity_search(query, k, embedding_model)
+            texts.append(texts_)
+            scores.append(scores_)
         # reset the filter after running
         self._texts_filter = None
 
