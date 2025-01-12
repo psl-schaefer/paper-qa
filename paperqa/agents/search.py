@@ -610,10 +610,11 @@ async def get_directory_index(  # noqa: PLR0912
     # NOTE: if the index was not previously built, its index_files will be empty.
     # Otherwise, the index_files will not be empty
     if not build:
-        if not await search_index.index_files:
+        if not (index_files := await search_index.index_files):
             raise RuntimeError(
                 f"Index {search_index.index_name} was empty, please rebuild it."
             )
+        logger.info(f"Using previously index build for {len(index_files)} files")
         return search_index
 
     if not sync_index_w_directory:

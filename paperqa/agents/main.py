@@ -54,6 +54,7 @@ async def agent_query(
     settings: Settings,
     docs: Docs | None = None,
     agent_type: str | type = DEFAULT_AGENT_TYPE,
+    rebuild_index: bool = True,
     **runner_kwargs,
 ) -> AnswerResponse:
     if docs is None:
@@ -66,7 +67,7 @@ async def agent_query(
         storage=SearchDocumentStorage.JSON_MODEL_DUMP,
     )
 
-    response = await run_agent(docs, query, settings, agent_type, **runner_kwargs)
+    response = await run_agent(docs, query, settings, agent_type, rebuild_index, **runner_kwargs)
     agent_logger.debug(f"agent_response: {response}")
 
     agent_logger.info(f"[bold blue]Answer: {response.session.answer}[/bold blue]")
@@ -91,6 +92,7 @@ async def run_agent(
     query: str | MultipleChoiceQuestion,
     settings: Settings,
     agent_type: str | type = DEFAULT_AGENT_TYPE,
+    rebuild_index: bool = True,
     **runner_kwargs,
 ) -> AnswerResponse:
     """
@@ -117,7 +119,9 @@ async def run_agent(
     )
 
     # Build the index once here, and then all tools won't need to rebuild it
-    await get_directory_index(settings=settings)
+    # NOTE: I modified the code such that I can pass here `build=False`
+    # because I have previously computed the index
+    await get_directory_index(settings=settings, build=rebuild_index)
     if isinstance(agent_type, str) and agent_type.lower() == FAKE_AGENT_TYPE:
         session, agent_status = await run_fake_agent(
             query, settings, docs, **runner_kwargs
