@@ -6,6 +6,7 @@ import re
 import textwrap
 from collections.abc import AsyncIterable, Sequence
 from copy import deepcopy
+from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import cast
@@ -14,6 +15,7 @@ import httpx
 import numpy as np
 import pytest
 from llmclient import (
+    CommonLLMNames,
     Embeddable,
     EmbeddingModel,
     HybridEmbeddingModel,
@@ -454,7 +456,7 @@ async def test_chain_completion() -> None:
 @pytest.mark.skipif(os.environ.get("ANTHROPIC_API_KEY") is None, reason="No API key")
 @pytest.mark.asyncio
 async def test_anthropic_chain(stub_data_dir: Path) -> None:
-    anthropic_settings = Settings(llm="claude-3-haiku-20240307")
+    anthropic_settings = Settings(llm=CommonLLMNames.ANTHROPIC_TEST.value)
     outputs: list[str] = []
 
     def accum(x) -> None:
@@ -707,7 +709,10 @@ def test_sparse_embedding(stub_data_dir: Path, vector_store: type[VectorStore]) 
         citation="WikiMedia Foundation, 2023, Accessed now",
         embedding_model=SparseEmbeddingModel(),
     )
-    assert any(cast(list[float], docs.texts[0].embedding))
+    assert isinstance(
+        docs.texts[0].embedding, list
+    ), "We require embeddings to be a list"
+    assert any(docs.texts[0].embedding), "We require embeddings to be populated"
     assert all(
         len(np.array(x.embedding).shape) == 1 for x in docs.texts
     ), "Embeddings should be 1D"
@@ -729,7 +734,10 @@ def test_hybrid_embedding(stub_data_dir: Path, vector_store: type[VectorStore]) 
         citation="WikiMedia Foundation, 2023, Accessed now",
         embedding_model=emb_model,
     )
-    assert any(cast(list[float], docs.texts[0].embedding))
+    assert isinstance(
+        docs.texts[0].embedding, list
+    ), "We require embeddings to be a list"
+    assert any(docs.texts[0].embedding), "We require embeddings to be populated"
 
     # check the embeddings are the same size
     assert docs.texts[0].embedding is not None
@@ -1235,8 +1243,115 @@ def test_answer_rename(recwarn) -> None:
     ],
 )
 def test_dois_resolve_to_correct_journals(doi_journals):
-    details = DocDetails(doi=doi_journals["doi"])  # type: ignore[call-arg]
+    details = DocDetails(doi=doi_journals["doi"])
     assert details.journal == doi_journals["journal"]
+
+
+def test_docdetails_merge_with_non_list_fields() -> None:
+    """Check republication where the source metadata has different shapes."""
+    initial_date = datetime(2023, 1, 1)
+    doc1 = DocDetails(
+        citation="Citation 1",
+        publication_date=initial_date,
+        docname="Document 1",
+        dockey="key1",
+        # NOTE: doc1 has non-list bibtex_source and list client_source
+        other={"bibtex_source": "source1", "client_source": ["client1"]},
+    )
+
+    later_publication_date = initial_date + timedelta(weeks=13)
+    doc2 = DocDetails(
+        citation=doc1.citation,
+        publication_date=later_publication_date,
+        docname=doc1.docname,
+        dockey=doc1.dockey,
+        # NOTE: doc2 has list bibtex_source and non-list client_source
+        other={"bibtex_source": ["source2"], "client_source": "client2"},
+    )
+
+    # Merge the two DocDetails instances
+    merged_doc = doc1 + doc2
+
+    assert {"source1", "source2"}.issubset(
+        merged_doc.other["bibtex_source"]
+    ), "Expected merge to keep both bibtex sources"
+    assert {"client1", "client2"}.issubset(
+        merged_doc.other["client_source"]
+    ), "Expected merge to keep both client sources"
+    assert isinstance(merged_doc, DocDetails), "Merged doc should also be DocDetails"
+
+
+def test_docdetails_merge_with_list_fields() -> None:
+    """Check republication where the source metadata is the same shape."""
+    initial_date = datetime(2023, 1, 1)
+    doc1 = DocDetails(
+        citation="Citation 1",
+        publication_date=initial_date,
+        docname="Document 1",
+        dockey="key1",
+        # NOTE: doc1 has list bibtex_source and list client_source
+        other={"bibtex_source": ["source1"], "client_source": ["client1"]},
+    )
+
+    later_publication_date = initial_date + timedelta(weeks=13)
+    doc2 = DocDetails(
+        citation=doc1.citation,
+        publication_date=later_publication_date,
+        docname=doc1.docname,
+        dockey=doc1.dockey,
+        # NOTE: doc2 has list bibtex_source and list client_source
+        other={"bibtex_source": ["source2"], "client_source": ["client2"]},
+    )
+
+    # Merge the two DocDetails instances
+    merged_doc = doc1 + doc2
+
+    assert {"source1", "source2"}.issubset(
+        merged_doc.other["bibtex_source"]
+    ), "Expected merge to keep both bibtex sources"
+    assert {"client1", "client2"}.issubset(
+        merged_doc.other["client_source"]
+    ), "Expected merge to keep both client sources"
+    assert isinstance(merged_doc, DocDetails), "Merged doc should also be DocDetails"
+
+
+def test_docdetails_deserialization() -> None:
+    deserialize_to_doc = {
+        "citation": "stub",
+        "dockey": "stub",
+        "docname": "Stub",
+        "embedding": None,
+        "formatted_citation": "stub",
+        "overwrite_fields_from_metadata": True,
+    }
+    deepcopy_deserialize_to_doc = deepcopy(deserialize_to_doc)
+    doc = Doc(**deserialize_to_doc)
+    assert not isinstance(doc, DocDetails), "Should just be Doc, not DocDetails"
+    assert (
+        deserialize_to_doc == deepcopy_deserialize_to_doc
+    ), "Deserialization should not mutate input"
+
+    doc_details = DocDetails(**deserialize_to_doc)
+    serialized_doc_details = doc_details.model_dump(exclude_none=True)
+    for key, value in {
+        "docname": "unknownauthorsUnknownyearunknowntitle",
+        "citation": "Unknown authors. Unknown title. Unknown journal, Unknown year.",
+        "overwrite_fields_from_metadata": True,
+        "key": "unknownauthorsUnknownyearunknowntitle",
+        "bibtex": (
+            '@article{unknownauthorsUnknownyearunknowntitle,\n    author = "authors,'
+            ' Unknown",\n    title = "Unknown title",\n    year = "Unknown year",\n   '
+            ' journal = "Unknown journal"\n}\n'
+        ),
+        "other": {},
+        "formatted_citation": (
+            "Unknown authors. Unknown title. Unknown journal, Unknown year."
+        ),
+    }.items():
+        assert serialized_doc_details[key] == value
+    assert (
+        deserialize_to_doc == deepcopy_deserialize_to_doc
+    ), "Deserialization should not mutate input"
 
 
 @pytest.mark.vcr
